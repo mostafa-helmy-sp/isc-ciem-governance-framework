@@ -1,0 +1,25 @@
+{
+  "name": "sailpoint-sdk",
+  "version": "0.1.0",
+  "description": "",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.5",
+    "@types/unzip-stream": "^0.3.4",
+    "sailpoint-api-client": "^1.3.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^4.9.5"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.12",
+    "axios": "^1.6.8",
+    "axios-oauth-client": "^2.2.0",
+    "csv42": "^5.0.0",
+    "pino": "^8.21.0"
+  }
+}
