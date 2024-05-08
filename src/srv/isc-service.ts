@@ -272,7 +272,20 @@ export class IscService {
             this.logger.debug(`Found a total of [${entitlements.length}] Entitlements`)
             const cloudEnabledEntitlements = this.filterAccountEntitlementsbyCloudEnabled(entitlements)
             if (cloudEnabledEntitlements && cloudEnabledEntitlements.length > 0) return cloudEnabledEntitlements
-            else this.logger.debug(`No Cloud Enabled Entitlements found using Entitlments Beta API with accountId: [${accountId}]`)
+            else this.logger.debug(`No Cloud Enabled Entitlements found using Accounts API for accountId: [${accountId}]`)
+        }
+        return
+    }
+
+    // Find all cloudGoverned access belonging to a specific account
+    async listCloudEntitlementForAccount(accountId: string, entitlementValue: string): Promise<EntitlementDto | undefined> {
+        if (!accountId || !entitlementValue) return
+        const entitlements = await this.listEntitlementsByAccountId(accountId)
+        if (entitlements && entitlements.length > 0) {
+            this.logger.debug(`Found a total of [${entitlements.length}] Entitlements`)
+            const cloudEntitlements = arrayFunc.filterArrayByObjectStringAttribute(entitlements, 'value', entitlementValue)
+            if (cloudEntitlements && cloudEntitlements.length > 0) return cloudEntitlements[0]
+            else this.logger.debug(`Cloud Entitlement [${entitlementValue}] not found found using Accounts API for accountId: [${accountId}]`)
         }
         return
     }

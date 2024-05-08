@@ -24,17 +24,19 @@ var ciemSrv = new CiemService(config.logLevel)
 async function process() {
     logger.info('##### Start Processing #####')
 
-    // await reportSrv.createIdentifiedResourceAccessReports(false)
+    await reportSrv.createIdentifiedResourceAccessReports(false)
 
-    // await reportSrv.createIdentifiedResourceAccessReport(reportSrv.getInputResourceAccessReportDir(), 'aws_sns_resource_access.csv', reportSrv.getOutputResourceAccessReportDir(), 'manual_', true)
+    // await reportSrv.createIdentifiedResourceAccessReport(reportSrv.getInputResourceAccessReportDir(), 'azure_Microsoft.Compute_resource_access.csv', reportSrv.getOutputResourceAccessReportDir(), 'manual_', false)
 
-    const fullReport = reportSrv.readReport(reportSrv.getOutputResourceAccessReportDir(), 'manual_aws_sns_resource_access.csv')
+
+    fsSrv.cleanupDirectory(reportSrv.getCustomOutputReportsDir())
+    const fullReport = reportSrv.readReport(reportSrv.getOutputResourceAccessReportDir(), 'identified_azure_Microsoft.Compute_resource_access.csv')
     if (!fullReport) return
     logger.info(`Unfiltered report has ${fullReport.length} records`)
-    const filteredReport = arrayFunc.filterArrayByFilterString(fullReport, `record.AccessLevel.includes('A') && record.ResourceName === 'sailpoint-cam-topic' && record.AccountInternalID === 'Unknown'`)
+    const filteredReport = arrayFunc.filterArrayByFilterString(fullReport, `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive'`)
     logger.info(`Filtered report has ${filteredReport.length} records`)
-
-    reportSrv.writeReport(reportSrv.getOutputResourceAccessReportDir(), 'filtered_aws_sns_resource_access.csv', filteredReport)
+    const filteredReportWithAccessPaths = await reportSrv.addAccessPaths(filteredReport)
+    reportSrv.writeReport(reportSrv.getCustomOutputReportsDir(), 'terminated_azure_Microsoft.Compute_admins.csv', filteredReportWithAccessPaths)
 
     logger.info('##### End Processing #####')
 }

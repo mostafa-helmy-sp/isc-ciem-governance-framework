@@ -1,3 +1,4 @@
+import { EntitlementDto } from 'sailpoint-api-client'
 import config from '../../config.json'
 
 var ciemConfig = config.CiemConfig
@@ -5,11 +6,11 @@ var ciemConfig = config.CiemConfig
 var defaultUnknownString = 'Unknown'
 
 export class AccessPathStep {
+    unknown: boolean
     csp: string
     type: string
     id: string
     name: string
-    unknown: boolean
 
     constructor(accessPathStep?: string) {
         try {
@@ -46,6 +47,7 @@ export class AccessPathStep {
 
 export class AccessPath {
     accessPathSteps: AccessPathStep[]
+    directEntitlement?: EntitlementDto
 
     constructor(accessPath?: string) {
         this.accessPathSteps = []
@@ -60,6 +62,30 @@ export class AccessPath {
         } else {
             this.accessPathSteps.push(new AccessPathStep())
         }
+    }
+
+    getAccessPathEntitlementValue(): string | undefined {
+        if (this.accessPathSteps.length > 1) return this.accessPathSteps[1].id
+    }
+
+    setDirectEntitlement(directEntitlement: EntitlementDto) {
+        this.directEntitlement = directEntitlement
+    }
+
+    getDirectEntitlementAttributes(): Record<string, string> {
+        let directEntitlementAttributes: Record<string, string> = {}
+        if (this.directEntitlement) {
+            directEntitlementAttributes.DirectEntitlementID = this.directEntitlement.id || defaultUnknownString
+            directEntitlementAttributes.DirectEntitlementName = this.directEntitlement.name
+            directEntitlementAttributes.DirectEntitlementAttribute = this.directEntitlement.attribute || defaultUnknownString
+            directEntitlementAttributes.DirectEntitlementValue = this.directEntitlement.value || defaultUnknownString
+        } else {
+            directEntitlementAttributes.DirectEntitlementID = defaultUnknownString
+            directEntitlementAttributes.DirectEntitlementName = defaultUnknownString
+            directEntitlementAttributes.DirectEntitlementAttribute = defaultUnknownString
+            directEntitlementAttributes.DirectEntitlementValue = defaultUnknownString
+        }
+        return directEntitlementAttributes
     }
 
     toString(includeIds?: boolean): string {

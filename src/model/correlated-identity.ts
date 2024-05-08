@@ -31,9 +31,13 @@ export class CorrelatedIdentity {
         if (account && account.id) {
             this.accountAttributes.AccountInternalID = account.id
             this.accountAttributes.AccountDisplayName = account.name
+            this.accountAttributes.AccountSourceInternalID = account.sourceId
+            this.accountAttributes.AccountSourceName = account.sourceName
         } else {
             this.accountAttributes.AccountInternalID = accountType
             this.accountAttributes.AccountDisplayName = accountType
+            this.accountAttributes.AccountSourceInternalID = accountType
+            this.accountAttributes.AccountSourceName = accountType
         }
         // Set Included Identity Attributes
         this.identityAttributes = {}

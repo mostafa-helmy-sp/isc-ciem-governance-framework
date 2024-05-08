@@ -7,7 +7,7 @@ import * as logSrv from './log-service'
 import * as arrayFunc from '../func/array-func'
 import { AccountType } from '../enum/acc-type'
 import { CorrelatedIdentity } from '../model/correlated-identity'
-import { Account, IdentityDocument } from 'sailpoint-api-client'
+import { Account, IdentityDocument, EntitlementDto } from 'sailpoint-api-client'
 import { CiemService } from './ciem-service'
 import { AccessPath } from '../model/access-paths'
 
@@ -23,6 +23,7 @@ export class ReportService {
     private iscSrv: IscService
     private fsSrv: FsService
     private identitiesMap: Map<string, CorrelatedIdentity>
+    private directEntitlementsMap: Map<string, EntitlementDto | undefined>
 
     constructor(logLevel?: string) {
         this.logger = logSrv.getLogger(logLevel)
@@ -31,6 +32,7 @@ export class ReportService {
         this.iscSrv = new IscService(config.logLevel)
         this.fsSrv = new FsService(config.logLevel)
         this.identitiesMap = new Map<string, CorrelatedIdentity>()
+        this.directEntitlementsMap = new Map<string, EntitlementDto | undefined>()
     }
 
     getWorkingDirectory(): string {
@@ -49,6 +51,10 @@ export class ReportService {
         return path.join(this.getInputReportsDir(), ciemConfig.UnusedAccessReportDir)
     }
 
+    getCustomInputReportsDir(): string {
+        return path.join(this.getInputReportsDir(), ciemConfig.CustomInputReportsDir)
+    }
+
     getOutputReportsDir(): string {
         return path.join(this.getWorkingDirectory(), ciemConfig.OutputReportsDir)
     }
@@ -59,6 +65,14 @@ export class ReportService {
 
     getOutputUnusedAccessReportDir(): string {
         return path.join(this.getOutputReportsDir(), ciemConfig.UnusedAccessReportDir)
+    }
+
+    getCustomOutputReportsDir(): string {
+        return path.join(this.getOutputReportsDir(), ciemConfig.CustomOutputReportsDir)
+    }
+
+    getDirectEntitlementMapKey(sourceId: string, entitlementValue: string) {
+        return `#${sourceId}#${entitlementValue}#`
     }
 
     // Update Account NativeIdentity to CorrelatedIdentity map for Bulk Processing
@@ -102,6 +116,56 @@ export class ReportService {
         return resourceAccessReportRecords
     }
 
+    // Fetch Direct Entitlement from Map or via API
+    async findDirectEntitlement(accountId: string, sourceId: string, entitlementValue: string): Promise<EntitlementDto | undefined> {
+        const mapKey = this.getDirectEntitlementMapKey(sourceId, entitlementValue)
+        // Return from map if already found
+        if (this.directEntitlementsMap.has(mapKey)) return this.directEntitlementsMap.get(mapKey)
+        // Fetch via API is not found already
+        const directEntitlement = await this.iscSrv.listCloudEntitlementForAccount(accountId, entitlementValue)
+        this.directEntitlementsMap.set(mapKey, directEntitlement)
+        return directEntitlement
+    }
+
+    // Include Access Paths to a single Report Record
+    async addAccessPath(reportRecord: any): Promise<any[]> {
+        let reportRecordWithAccessPaths: any[] = []
+        let accessPaths = [new AccessPath()]
+        // Only attempt to calculate the access path for known accounts
+        if (reportRecord.AccountInternalID && reportRecord.AccountInternalID != AccountType.UNKNOWN) {
+            let fetchedAccessPaths = await this.ciemSrv.getResourceAccessPathsForAccount(reportRecord.AccountId, "User", reportRecord.AccountSourceType, reportRecord.Service, reportRecord.ResourceType, reportRecord.ResourceId)
+            // Use fetched Access Path if found
+            if (fetchedAccessPaths) accessPaths = fetchedAccessPaths
+        }
+        for (const accessPath of accessPaths) {
+            const directEntitlementValue = accessPath.getAccessPathEntitlementValue()
+            // Fetch Direct Entitlement Details if known
+            if (reportRecord.AccountInternalID && reportRecord.AccountInternalID != AccountType.UNKNOWN && directEntitlementValue) {
+                const directEntitlement = await this.findDirectEntitlement(reportRecord.AccountInternalID, reportRecord.AccountSourceInternalID, directEntitlementValue)
+                if (directEntitlement) accessPath.setDirectEntitlement(directEntitlement)
+            }
+            reportRecordWithAccessPaths.push({ ...reportRecord, ...accessPath.getDirectEntitlementAttributes(), AccessPath: accessPath.toString() })
+        }
+        return reportRecordWithAccessPaths
+    }
+
+    // Include the Identity Context to Report Records
+    async addIdentityContext(reportRecords: any[], includeAccessPaths: boolean): Promise<any[]> {
+        let identifiedReportRecords: any[] = []
+        for (const reportRecord of reportRecords) {
+            // Fetch CorrelatedIdentity object from map
+            const correlatedIdentity = this.identitiesMap.get(reportRecord.AccountId) || new CorrelatedIdentity(AccountType.UNKNOWN)
+            const identifiedReportRecord = { ...correlatedIdentity.identityAttributes, ...reportRecord, ...correlatedIdentity.accountAttributes }
+            if (includeAccessPaths) {
+                const reportRecordWithAccessPaths = await this.addAccessPath(identifiedReportRecord)
+                identifiedReportRecords = arrayFunc.mergeArrays(identifiedReportRecords, reportRecordWithAccessPaths)
+            } else {
+                identifiedReportRecords.push(identifiedReportRecord)
+            }
+        }
+        return identifiedReportRecords
+    }
+
     // Fetch Correlated Identity details in bulk for a single report
     async identifyReport(directory: string, report: string, includeAccessPaths: boolean): Promise<any[] | undefined> {
         const resourceAccessReportRecords = this.readReport(directory, report)
@@ -136,35 +200,28 @@ export class ReportService {
             this.updateIdentitiesMap(newAccountNativeIds, accounts, identities)
         }
         this.logger.debug(`Identities Map size: [${this.identitiesMap.size}] following Report [${report}]`)
-        const identifiedResourceAccessReportRecords: any[] = []
         this.logger.info(`Creating identified report ${includeAccessPaths ? `including Access Paths ` : ``}for Report [${report}]`)
-        for (const resourceAccessReportRecord of resourceAccessReportRecords) {
-            // Fetch CorrelatedIdentity object from map
-            let correlatedIdentity = this.identitiesMap.get(resourceAccessReportRecord.AccountId) || new CorrelatedIdentity(AccountType.UNKNOWN)
-            let identifiedResourceAccessReportRecord = { ...correlatedIdentity.identityAttributes, ...resourceAccessReportRecord, ...correlatedIdentity.accountAttributes }
-            if (includeAccessPaths) {
-                let accessPaths = [new AccessPath()]
-                // Only attempt to calculate the access path for known accounts
-                if (correlatedIdentity.type != AccountType.UNKNOWN) {
-                    let fetchedAccessPaths = await this.ciemSrv.getResourceAccessPathsForAccount(resourceAccessReportRecord.AccountId, "User", resourceAccessReportRecord.AccountSourceType, resourceAccessReportRecord.Service, resourceAccessReportRecord.ResourceType, resourceAccessReportRecord.ResourceId)
-                    // Use fetched Access Path if found
-                    if (fetchedAccessPaths) accessPaths = fetchedAccessPaths
-                }
-                accessPaths.forEach(accessPath => {
-                    identifiedResourceAccessReportRecords.push({ ...identifiedResourceAccessReportRecord, AccessPath: accessPath.toString() })
-                });
-            } else {
-                identifiedResourceAccessReportRecords.push(identifiedResourceAccessReportRecord)
-            }
-        }
+        const identifiedResourceAccessReportRecords = await this.addIdentityContext(resourceAccessReportRecords, includeAccessPaths)
         return identifiedResourceAccessReportRecords
     }
 
+    // Include Access Paths to Report Records
+    async addAccessPaths(reportRecords: any[]): Promise<any[]> {
+        let accessPathReportRecords: any[] = []
+        for (const reportRecord of reportRecords) {
+            const reportRecordWithAccessPaths = await this.addAccessPath(reportRecord)
+            accessPathReportRecords = arrayFunc.mergeArrays(accessPathReportRecords, reportRecordWithAccessPaths)
+        }
+        return accessPathReportRecords
+    }
+
+    // Write report to file
     writeReport(directory: string, reportName: string, reportRecords: any[]) {
         this.logger.debug(`Writing Report [${reportName}]`)
         this.fsSrv.writeObjectToCsvFile(directory, reportName, reportRecords)
     }
 
+    // Add Identity Details and optionally Access Paths to a single Resource Access Report
     async createIdentifiedResourceAccessReport(inResourceAccessReportsDir: string, resourceAccessReportFile: string, outResourceAccessReportsDir: string, reportNamePrefix: string, includeAccessPaths: boolean) {
         // Process report and add included identity attributes
         const identifiedResourceAccessReportRecords = await this.identifyReport(inResourceAccessReportsDir, resourceAccessReportFile, includeAccessPaths)
@@ -176,7 +233,7 @@ export class ReportService {
         this.writeReport(outResourceAccessReportsDir, `${reportNamePrefix}${resourceAccessReportFile}`, identifiedResourceAccessReportRecords)
     }
 
-    // Add Identity Details
+    // Add Identity Details and optionally Access Paths to all Resource Access Reports
     async createIdentifiedResourceAccessReports(includeAccessPaths: boolean) {
         this.logger.info(this.fsSrv.listFilesInDirectory(this.getInputReportsDir()), `Input Reports Dir Contents`)
         const inResourceAccessReportsDir = this.getInputResourceAccessReportDir()
@@ -202,5 +259,4 @@ export class ReportService {
             }
         }
     }
-
 }
