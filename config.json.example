@@ -10,6 +10,7 @@
 		"UnusedAccessUrlPath": "/v1/activity/unused-access-report",
 		"CloudEnabledEntitlementsUrlPath": "/v1/inventory/effective-access/supported-entitlements",
 		"ResourceAccessPathsUrlPath": "/v1/inventory/effective-access/resource-access-paths",
+		"WorkingDir": "C:\\Users\\myuser\\mypath\\ciem_working_dir",
 		"InputReportsDir": "ciem_input_reports",
 		"ResourceAccessReportName": "ResourceAccessReport.zip",
 		"UnusedAccessReportName": "90DayUnusedCloudAdministrativeActivityData.zip",

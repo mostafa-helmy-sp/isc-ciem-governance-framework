@@ -24,12 +24,20 @@ export class CorrelatedIdentity {
     identityAttributes: Record<string, string>
     accountAttributes: Record<string, string>
 
-    constructor(accountType: AccountType, identity?: IdentityDocument, account?: Account) {
+    constructor(accountType: AccountType, account?: Account, identity?: IdentityDocument) {
         this.type = accountType
-        this.identityAttributes = {}
         this.accountAttributes = {}
-        const includedAttributes = config.CiemConfig.IncludedIdentityAttributes
+        // Set Key Account Attributes
+        if (account && account.id) {
+            this.accountAttributes.AccountInternalID = account.id
+            this.accountAttributes.AccountDisplayName = account.name
+        } else {
+            this.accountAttributes.AccountInternalID = accountType
+            this.accountAttributes.AccountDisplayName = accountType
+        }
         // Set Included Identity Attributes
+        this.identityAttributes = {}
+        const includedAttributes = config.CiemConfig.IncludedIdentityAttributes
         if (!identity) {
             // Set id to AccountType when no identity supplied
             this.id = accountType
@@ -82,14 +90,6 @@ export class CorrelatedIdentity {
                     logger.error(`Unable to parse Identity Attribute [${JSON.stringify(includedAttributeName)}] with error: [${error instanceof Error ? error.message : error}]`)
                 }
             });
-        }
-        // Set Key Account Attributes
-        if (account && account.id) {
-            this.accountAttributes.AccountInternalID = account.id
-            this.accountAttributes.AccountDisplayName = account.name
-        } else {
-            this.accountAttributes.AccountInternalID = accountType
-            this.accountAttributes.AccountDisplayName = accountType
         }
     }
 

@@ -1,4 +1,5 @@
 import config from '../config.json'
+import * as arrayFunc from './func/array-func'
 import * as logSrv from './srv/log-service'
 import { IscService } from './srv/isc-service'
 import { FsService } from './srv/fs-service'
@@ -23,15 +24,17 @@ var ciemSrv = new CiemService(config.logLevel)
 async function process() {
     logger.info('##### Start Processing #####')
 
-    // let cloudEnabledEntitlements = await ciemSrv.getCloudEnabledEntitlementsForAccount("5e01a935cef54b60a6f4cc24cd2b5f54")
-    // console.log(JSON.stringify(cloudEnabledEntitlements))
+    // await reportSrv.createIdentifiedResourceAccessReports(false)
 
-    // let accessPaths = await ciemSrv.getResourceAccessPathsForAccount("arn:aws:iam::699264236613:user/Craig.Hart", "User", "AWS", "lambda", "Function", "arn:aws:lambda:us-east-1:699264236613:function:s3_log")
-    // accessPaths?.forEach(accessPath => {
-    //     console.log(`${accessPath.toString(false)}\n`)
-    // });
+    // await reportSrv.createIdentifiedResourceAccessReport(reportSrv.getInputResourceAccessReportDir(), 'aws_sns_resource_access.csv', reportSrv.getOutputResourceAccessReportDir(), 'manual_', true)
 
-    await reportSrv.identifyResourceAccessReports(false)
+    const fullReport = reportSrv.readReport(reportSrv.getOutputResourceAccessReportDir(), 'manual_aws_sns_resource_access.csv')
+    if (!fullReport) return
+    logger.info(`Unfiltered report has ${fullReport.length} records`)
+    const filteredReport = arrayFunc.filterArrayByFilterString(fullReport, `record.AccessLevel.includes('A') && record.ResourceName === 'sailpoint-cam-topic' && record.AccountInternalID === 'Unknown'`)
+    logger.info(`Filtered report has ${filteredReport.length} records`)
+
+    reportSrv.writeReport(reportSrv.getOutputResourceAccessReportDir(), 'filtered_aws_sns_resource_access.csv', filteredReport)
 
     logger.info('##### End Processing #####')
 }

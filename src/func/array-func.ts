@@ -36,27 +36,27 @@ export function mergeArraysDeduplicateById<Type>(items1: Type[], items2: Type[])
     return mergeArraysDeduplicateByAttribute(items1, items1, "id")
 }
 
-// Search attribute by object attribute value
+// Search array by object attribute value
 export function filterArrayByObjectStringAttribute<Type>(items: Type[], attributeName: string, attributeValue: string): Type[] {
     return items.filter(item => item[attributeName as keyof Type] == attributeValue)
 }
 
-// Search attribute by object attribute value
+// Search array by object attribute value
 export function filterArrayByObjectBooleanAttribute<Type>(items: Type[], attributeName: string, attributeValue: boolean): Type[] {
     return items.filter(item => item[attributeName as keyof Type] == attributeValue)
 }
 
-// Search attribute by object attribute value
+// Search array by object attribute value
 export function findArrayDifference(items1: string[], items2: string[]): string[] {
     return items1.filter(item => !items2.includes(item))
 }
 
-// Search attribute by object attribute value
+// Search array by object attribute value
 export function findArrayMapDifference(items: string[], map: Map<string, any>): string[] {
     return items.filter(item => !map.has(item))
 }
 
-// Search attribute by object attribute value
+// Search array by object attribute value
 export function findObjectAttribute<Type>(items: Type[], attributeName: string, attributeValues: string): Type | undefined {
     const results = filterArrayByObjectStringAttribute(items, attributeName, attributeValues)
     if (results.length > 0) {
@@ -64,6 +64,11 @@ export function findObjectAttribute<Type>(items: Type[], attributeName: string, 
     } else {
         return
     }
+}
+
+// Search array by given filter string
+export function filterArrayByFilterString<Type>(items: Type[], filter: string): Type[] {
+    return items.filter(record => eval(filter))
 }
 
 // Helper method to build a query or filter from an array of values

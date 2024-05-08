@@ -9,11 +9,12 @@ import { AccountType } from '../enum/acc-type'
 import { CorrelatedIdentity } from '../model/correlated-identity'
 import { Account, IdentityDocument } from 'sailpoint-api-client'
 import { CiemService } from './ciem-service'
+import { AccessPath } from '../model/access-paths'
 
 // Get CIEM Config Object
 var ciemConfig = config.CiemConfig
 var identifiedReportNamePrefix = "identified_"
-var accessPathReportNamePrefix = "identified_"
+var accessPathReportNamePrefix = "with_access_paths_"
 var defaultChunkSize = 75
 
 export class ReportService {
@@ -32,6 +33,34 @@ export class ReportService {
         this.identitiesMap = new Map<string, CorrelatedIdentity>()
     }
 
+    getWorkingDirectory(): string {
+        return ciemConfig.WorkingDir || '.'
+    }
+
+    getInputReportsDir(): string {
+        return path.join(this.getWorkingDirectory(), ciemConfig.InputReportsDir)
+    }
+
+    getInputResourceAccessReportDir(): string {
+        return path.join(this.getInputReportsDir(), ciemConfig.ResourceAccessReportDir)
+    }
+
+    getInputUnusedAccessReportDir(): string {
+        return path.join(this.getInputReportsDir(), ciemConfig.UnusedAccessReportDir)
+    }
+
+    getOutputReportsDir(): string {
+        return path.join(this.getWorkingDirectory(), ciemConfig.OutputReportsDir)
+    }
+
+    getOutputResourceAccessReportDir(): string {
+        return path.join(this.getOutputReportsDir(), ciemConfig.ResourceAccessReportDir)
+    }
+
+    getOutputUnusedAccessReportDir(): string {
+        return path.join(this.getOutputReportsDir(), ciemConfig.UnusedAccessReportDir)
+    }
+
     // Update Account NativeIdentity to CorrelatedIdentity map for Bulk Processing
     updateIdentitiesMap(accountNativeIds: string[], accounts: Account[] | undefined, identities: IdentityDocument[] | undefined) {
         for (const accountNativeId of accountNativeIds) {
@@ -43,11 +72,11 @@ export class ReportService {
             if (accounts) {
                 const account = arrayFunc.findObjectAttribute(accounts, "nativeIdentity", accountNativeId)
                 if (account) {
-                    correlatedIdentity = new CorrelatedIdentity(AccountType.UNCORRELATED)
+                    correlatedIdentity = new CorrelatedIdentity(AccountType.UNCORRELATED, account)
                     if (identities && !account.uncorrelated && account.identityId) {
                         const identity = arrayFunc.findObjectAttribute(identities, "id", account.identityId)
                         if (identity) {
-                            correlatedIdentity = new CorrelatedIdentity(AccountType.CORRELATED, identity, account)
+                            correlatedIdentity = new CorrelatedIdentity(AccountType.CORRELATED, account, identity)
                         } else {
                             this.logger.error(`Could not find identity with id [${account.identityId}] for account [${accountNativeId}]`)
                         }
@@ -62,14 +91,21 @@ export class ReportService {
         }
     }
 
-    // Fetch Correlated Identity details in bulk for a single report
-    async identifyReportBulk(directory: string, report: string, includeAccessPaths: boolean): Promise<any[] | undefined> {
-        this.logger.info(`Reading Resource Access Report [${report}]`)
+    // Read a single CSV report from the specified directory
+    readReport(directory: string, report: string): any[] | undefined {
+        this.logger.info(`Reading Report [${report}]`)
         const resourceAccessReportRecords = this.fsSrv.readCsvFileToObject(directory, report)
         if (!resourceAccessReportRecords) {
             this.logger.error(`Unable to read report: [${report}]`)
             return
         }
+        return resourceAccessReportRecords
+    }
+
+    // Fetch Correlated Identity details in bulk for a single report
+    async identifyReport(directory: string, report: string, includeAccessPaths: boolean): Promise<any[] | undefined> {
+        const resourceAccessReportRecords = this.readReport(directory, report)
+        if (!resourceAccessReportRecords) return
         // Find unique list of AccountIDs in report
         const accountNativeIds = arrayFunc.buildAttributeArray(resourceAccessReportRecords, "AccountId", true)
         this.logger.debug(`Found [${accountNativeIds.length}] Unique CSP AccountIDs from Report [${report}]`)
@@ -101,34 +137,54 @@ export class ReportService {
         }
         this.logger.debug(`Identities Map size: [${this.identitiesMap.size}] following Report [${report}]`)
         const identifiedResourceAccessReportRecords: any[] = []
-        this.logger.info(`Creating identified report ${includeAccessPaths ? `including Access Paths` : ``}for Report [${report}]`)
+        this.logger.info(`Creating identified report ${includeAccessPaths ? `including Access Paths ` : ``}for Report [${report}]`)
         for (const resourceAccessReportRecord of resourceAccessReportRecords) {
             // Fetch CorrelatedIdentity object from map
             let correlatedIdentity = this.identitiesMap.get(resourceAccessReportRecord.AccountId) || new CorrelatedIdentity(AccountType.UNKNOWN)
             let identifiedResourceAccessReportRecord = { ...correlatedIdentity.identityAttributes, ...resourceAccessReportRecord, ...correlatedIdentity.accountAttributes }
             if (includeAccessPaths) {
-                let accessPaths = await this.ciemSrv.getResourceAccessPathsForAccount(resourceAccessReportRecord.AccountId, "User", resourceAccessReportRecord.AccountSourceType
-                    , resourceAccessReportRecord.Service, resourceAccessReportRecord.ResourceType, resourceAccessReportRecord.ResourceId)
-                if (accessPaths) {
-                    accessPaths.forEach(accessPath => {
-                        identifiedResourceAccessReportRecords.push({ ...identifiedResourceAccessReportRecord, AccessPath: accessPath.toString() })
-                    });
+                let accessPaths = [new AccessPath()]
+                // Only attempt to calculate the access path for known accounts
+                if (correlatedIdentity.type != AccountType.UNKNOWN) {
+                    let fetchedAccessPaths = await this.ciemSrv.getResourceAccessPathsForAccount(resourceAccessReportRecord.AccountId, "User", resourceAccessReportRecord.AccountSourceType, resourceAccessReportRecord.Service, resourceAccessReportRecord.ResourceType, resourceAccessReportRecord.ResourceId)
+                    // Use fetched Access Path if found
+                    if (fetchedAccessPaths) accessPaths = fetchedAccessPaths
                 }
+                accessPaths.forEach(accessPath => {
+                    identifiedResourceAccessReportRecords.push({ ...identifiedResourceAccessReportRecord, AccessPath: accessPath.toString() })
+                });
+            } else {
+                identifiedResourceAccessReportRecords.push(identifiedResourceAccessReportRecord)
             }
-            identifiedResourceAccessReportRecords.push(identifiedResourceAccessReportRecord)
         }
         return identifiedResourceAccessReportRecords
     }
 
+    writeReport(directory: string, reportName: string, reportRecords: any[]) {
+        this.logger.debug(`Writing Report [${reportName}]`)
+        this.fsSrv.writeObjectToCsvFile(directory, reportName, reportRecords)
+    }
+
+    async createIdentifiedResourceAccessReport(inResourceAccessReportsDir: string, resourceAccessReportFile: string, outResourceAccessReportsDir: string, reportNamePrefix: string, includeAccessPaths: boolean) {
+        // Process report and add included identity attributes
+        const identifiedResourceAccessReportRecords = await this.identifyReport(inResourceAccessReportsDir, resourceAccessReportFile, includeAccessPaths)
+        if (!identifiedResourceAccessReportRecords) {
+            this.logger.error(`Error creating Identified Report for [${resourceAccessReportFile}]`)
+            return
+        }
+        // Write new report to output file
+        this.writeReport(outResourceAccessReportsDir, `${reportNamePrefix}${resourceAccessReportFile}`, identifiedResourceAccessReportRecords)
+    }
+
     // Add Identity Details
-    async identifyResourceAccessReports(includeAccessPaths: boolean) {
-        this.logger.info(this.fsSrv.listFilesInDirectory(ciemConfig.InputReportsDir), `Input Reports Dir Contents`)
-        const inResourceAccessReportsDir = path.join(ciemConfig.InputReportsDir, ciemConfig.ResourceAccessReportDir)
-        const inUnusedAccessReportsDir = path.join(ciemConfig.InputReportsDir, ciemConfig.UnusedAccessReportDir)
-        const outResourceAccessReportsDir = path.join(ciemConfig.OutputReportsDir, ciemConfig.ResourceAccessReportDir)
-        const outUnusedAccessReportsDir = path.join(ciemConfig.OutputReportsDir, ciemConfig.UnusedAccessReportDir)
+    async createIdentifiedResourceAccessReports(includeAccessPaths: boolean) {
+        this.logger.info(this.fsSrv.listFilesInDirectory(this.getInputReportsDir()), `Input Reports Dir Contents`)
+        const inResourceAccessReportsDir = this.getInputResourceAccessReportDir()
+        const inUnusedAccessReportsDir = this.getInputUnusedAccessReportDir()
+        const outResourceAccessReportsDir = this.getOutputResourceAccessReportDir()
+        const outUnusedAccessReportsDir = this.getOutputUnusedAccessReportDir()
         // Unzip Resource Access Reports
-        this.fsSrv.unzipDirectoryFile(ciemConfig.InputReportsDir, ciemConfig.ResourceAccessReportName, inResourceAccessReportsDir, false)
+        this.fsSrv.unzipDirectoryFile(this.getInputReportsDir(), ciemConfig.ResourceAccessReportName, inResourceAccessReportsDir, false)
         // Cleanup Output Reports directories
         this.fsSrv.cleanupDirectory(outResourceAccessReportsDir)
         this.fsSrv.cleanupDirectory(outUnusedAccessReportsDir)
@@ -141,16 +197,8 @@ export class ReportService {
                 reportNamePrefix += accessPathReportNamePrefix
             }
             for (const resourceAccessReportFile of resourceAccessReportFiles) {
-                // Process report and add included identity attributes
-                const identifiedResourceAccessReportRecords = await this.identifyReportBulk(inResourceAccessReportsDir, resourceAccessReportFile, includeAccessPaths)
-                if (!identifiedResourceAccessReportRecords) {
-                    this.logger.info(`Writing creating Identified Report for [${resourceAccessReportFile}]`)
-                    continue
-                }
-                // Write new report to output file
-                this.logger.debug(`Writing Identified Report for [${resourceAccessReportFile}]`)
-                const identifiedReportName = `${reportNamePrefix}${resourceAccessReportFile}`
-                this.fsSrv.writeObjectToCsvFile(outResourceAccessReportsDir, identifiedReportName, identifiedResourceAccessReportRecords)
+                // Create each Identified Resource Access report
+                await this.createIdentifiedResourceAccessReport(inResourceAccessReportsDir, resourceAccessReportFile, outResourceAccessReportsDir, reportNamePrefix, includeAccessPaths)
             }
         }
     }

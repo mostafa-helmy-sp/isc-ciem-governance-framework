@@ -113,8 +113,8 @@ export class CiemService {
                 return accessPaths
             }
         } catch (error) {
-            // logSrv.logStandardApiError(this.logger, error, "Cloud Enabled Entitlements", `fetching access paths between account [${accountNativeIdentity}] and resource [${resourceId}]`, request)
-            logSrv.logStandardApiError(this.logger, error, "Cloud Enabled Entitlements", `fetching access paths between account [${accountNativeIdentity}] and resource [${resourceId}]`)
+            logSrv.logStandardApiError(this.logger, error, "Cloud Enabled Entitlements", `fetching access paths between account [${accountNativeIdentity}] and resource [${resourceId}]`, request)
+            // logSrv.logStandardApiError(this.logger, error, "Cloud Enabled Entitlements", `fetching access paths between account [${accountNativeIdentity}] and resource [${resourceId}]`)
         }
     }
 }
