@@ -24,13 +24,10 @@ var ciemSrv = new CiemService(config.logLevel)
 async function process() {
     logger.info('##### Start Processing #####')
 
-    await reportSrv.createIdentifiedResourceAccessReports(false)
-
-    // await reportSrv.createIdentifiedResourceAccessReport(reportSrv.getInputResourceAccessReportDir(), 'azure_Microsoft.Compute_resource_access.csv', reportSrv.getOutputResourceAccessReportDir(), 'manual_', false)
-
+    await reportSrv.createIdentifiedResourceAccessReports()
 
     fsSrv.cleanupDirectory(reportSrv.getCustomOutputReportsDir())
-    const fullReport = reportSrv.readReport(reportSrv.getOutputResourceAccessReportDir(), 'identified_azure_Microsoft.Compute_resource_access.csv')
+    const fullReport = reportSrv.readReport(reportSrv.getOutputResourceAccessReportDir(), 'azure_Microsoft.Compute_resource_access.csv')
     if (!fullReport) return
     logger.info(`Unfiltered report has ${fullReport.length} records`)
     const filteredReport = arrayFunc.filterArrayByFilterString(fullReport, `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive'`)

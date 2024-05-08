@@ -13,8 +13,6 @@ import { AccessPath } from '../model/access-paths'
 
 // Get CIEM Config Object
 var ciemConfig = config.CiemConfig
-var identifiedReportNamePrefix = "identified_"
-var accessPathReportNamePrefix = "with_access_paths_"
 var defaultChunkSize = 75
 
 export class ReportService {
@@ -150,7 +148,7 @@ export class ReportService {
     }
 
     // Include the Identity Context to Report Records
-    async addIdentityContext(reportRecords: any[], includeAccessPaths: boolean): Promise<any[]> {
+    async addIdentityContext(reportRecords: any[], includeAccessPaths?: boolean): Promise<any[]> {
         let identifiedReportRecords: any[] = []
         for (const reportRecord of reportRecords) {
             // Fetch CorrelatedIdentity object from map
@@ -167,7 +165,7 @@ export class ReportService {
     }
 
     // Fetch Correlated Identity details in bulk for a single report
-    async identifyReport(directory: string, report: string, includeAccessPaths: boolean): Promise<any[] | undefined> {
+    async identifyReport(directory: string, report: string, includeAccessPaths?: boolean): Promise<any[] | undefined> {
         const resourceAccessReportRecords = this.readReport(directory, report)
         if (!resourceAccessReportRecords) return
         // Find unique list of AccountIDs in report
@@ -222,7 +220,7 @@ export class ReportService {
     }
 
     // Add Identity Details and optionally Access Paths to a single Resource Access Report
-    async createIdentifiedResourceAccessReport(inResourceAccessReportsDir: string, resourceAccessReportFile: string, outResourceAccessReportsDir: string, reportNamePrefix: string, includeAccessPaths: boolean) {
+    async createIdentifiedResourceAccessReport(inResourceAccessReportsDir: string, resourceAccessReportFile: string, outResourceAccessReportsDir: string, includeAccessPaths?: boolean) {
         // Process report and add included identity attributes
         const identifiedResourceAccessReportRecords = await this.identifyReport(inResourceAccessReportsDir, resourceAccessReportFile, includeAccessPaths)
         if (!identifiedResourceAccessReportRecords) {
@@ -230,11 +228,11 @@ export class ReportService {
             return
         }
         // Write new report to output file
-        this.writeReport(outResourceAccessReportsDir, `${reportNamePrefix}${resourceAccessReportFile}`, identifiedResourceAccessReportRecords)
+        this.writeReport(outResourceAccessReportsDir, resourceAccessReportFile, identifiedResourceAccessReportRecords)
     }
 
     // Add Identity Details and optionally Access Paths to all Resource Access Reports
-    async createIdentifiedResourceAccessReports(includeAccessPaths: boolean) {
+    async createIdentifiedResourceAccessReports(includeAccessPaths?: boolean) {
         this.logger.info(this.fsSrv.listFilesInDirectory(this.getInputReportsDir()), `Input Reports Dir Contents`)
         const inResourceAccessReportsDir = this.getInputResourceAccessReportDir()
         const inUnusedAccessReportsDir = this.getInputUnusedAccessReportDir()
@@ -248,14 +246,9 @@ export class ReportService {
         const resourceAccessReportFiles = this.fsSrv.listCsvFilesInDirectory(inResourceAccessReportsDir)
         this.logger.info(resourceAccessReportFiles, `Resource Access Dir Contents`)
         if (resourceAccessReportFiles) {
-            // Set Output Report Name Prefixes
-            let reportNamePrefix = identifiedReportNamePrefix
-            if (includeAccessPaths) {
-                reportNamePrefix += accessPathReportNamePrefix
-            }
             for (const resourceAccessReportFile of resourceAccessReportFiles) {
                 // Create each Identified Resource Access report
-                await this.createIdentifiedResourceAccessReport(inResourceAccessReportsDir, resourceAccessReportFile, outResourceAccessReportsDir, reportNamePrefix, includeAccessPaths)
+                await this.createIdentifiedResourceAccessReport(inResourceAccessReportsDir, resourceAccessReportFile, outResourceAccessReportsDir, includeAccessPaths)
             }
         }
     }
