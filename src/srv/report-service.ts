@@ -105,7 +105,7 @@ export class ReportService {
 
     // Read a single CSV report from the specified directory
     readReport(directory: string, report: string): any[] | undefined {
-        this.logger.info(`Reading Report [${report}]`)
+        this.logger.debug(`Reading Report [${report}]`)
         const resourceAccessReportRecords = this.fsSrv.readCsvFileToObject(directory, report)
         if (!resourceAccessReportRecords) {
             this.logger.error(`Unable to read report: [${report}]`)
@@ -219,6 +219,16 @@ export class ReportService {
         this.fsSrv.writeObjectToCsvFile(directory, reportName, reportRecords)
     }
 
+    // Write Resource Access Report to file
+    writeResourceAccessReport(reportName: string, reportRecords: any[]) {
+        this.writeReport(this.getOutputResourceAccessReportDir(), reportName, reportRecords)
+    }
+
+    // Write Custom Output Report to file
+    writeCustomReport(reportName: string, reportRecords: any[]) {
+        this.writeReport(this.getCustomOutputReportsDir(), reportName, reportRecords)
+    }
+
     // Add Identity Details and optionally Access Paths to a single Resource Access Report
     async createIdentifiedResourceAccessReport(inResourceAccessReportsDir: string, resourceAccessReportFile: string, outResourceAccessReportsDir: string, includeAccessPaths?: boolean) {
         // Process report and add included identity attributes
@@ -251,5 +261,56 @@ export class ReportService {
                 await this.createIdentifiedResourceAccessReport(inResourceAccessReportsDir, resourceAccessReportFile, outResourceAccessReportsDir, includeAccessPaths)
             }
         }
+    }
+
+    // Default Report result when no results found
+    getEmptyResult(errorMessage?: string): any[] {
+        return [{ Error: (errorMessage ? errorMessage : 'No results found') }]
+    }
+
+    // Build file name match regex from input CSP & Service
+    getFileMatchRegEx(csp?: string, service?: string): string {
+        let regex = `${!csp || csp === '*' ? '(.*)' : csp.toLowerCase()}_(.*)${!service || service === '*' ? '' : `${service.toLowerCase()}(.*)`}_`
+        return regex
+    }
+
+    // Create a custom report by filtering different Resource Access Reports 
+    async searchOutputResourceAccessReports(filter: string, includeAccessPaths: boolean, csp?: string, service?: string): Promise<any[]> {
+        if (!filter) return this.getEmptyResult(`Invalid or Empty inputs. CSP: [${csp}], Service: [${service}], Filter: [${filter}]`)
+        // Build file regex filter using input csp / service
+        const regex = this.getFileMatchRegEx(csp, service)
+        const files = this.fsSrv.filterCsvFilesByRegExInDirectory(this.getOutputResourceAccessReportDir(), regex)
+        if (!files) {
+            const errorMessage = `File Name RegEx: [${regex}] derived from CSP: [${csp}] and Service: [${service}] matched no output resource access reports`
+            this.logger.error(errorMessage)
+            return this.getEmptyResult(errorMessage)
+        }
+        let results: any[] = []
+        for (const file of files) {
+            const fullReport = this.readReport(this.getOutputResourceAccessReportDir(), file)
+            if (!fullReport) {
+                this.logger.debug(`No records found in output resource access report: [${file}]`)
+            } else {
+                this.logger.debug(`Unfiltered report has ${fullReport.length} records`)
+                let filteredReport = arrayFunc.filterArrayByFilterString(fullReport, filter)
+                this.logger.debug(`Filtered report has ${filteredReport.length} records`)
+                // Only process if filter returned results
+                if (filteredReport && filteredReport.length > 0) {
+                    // Include access paths if required
+                    if (includeAccessPaths) {
+                        filteredReport = await this.addAccessPaths(filteredReport)
+                    }
+                    results = arrayFunc.mergeArrays(results, filteredReport)
+                }
+            }
+        }
+        if (results.length > 0) return results
+        else return this.getEmptyResult()
+    }
+
+    // Create and Write a Custom Report
+    async createCustomReport(reportName: string, filter: string, includeAccessPaths: boolean, csp?: string, service?: string) {
+        let filteredReport = await this.searchOutputResourceAccessReports(filter, includeAccessPaths, csp, service)
+        this.writeCustomReport(reportName, filteredReport)
     }
 }

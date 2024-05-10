@@ -27,13 +27,30 @@ async function process() {
     await reportSrv.createIdentifiedResourceAccessReports()
 
     fsSrv.cleanupDirectory(reportSrv.getCustomOutputReportsDir())
-    const fullReport = reportSrv.readReport(reportSrv.getOutputResourceAccessReportDir(), 'azure_Microsoft.Compute_resource_access.csv')
-    if (!fullReport) return
-    logger.info(`Unfiltered report has ${fullReport.length} records`)
-    const filteredReport = arrayFunc.filterArrayByFilterString(fullReport, `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive'`)
-    logger.info(`Filtered report has ${filteredReport.length} records`)
-    const filteredReportWithAccessPaths = await reportSrv.addAccessPaths(filteredReport)
-    reportSrv.writeReport(reportSrv.getCustomOutputReportsDir(), 'terminated_azure_Microsoft.Compute_admins.csv', filteredReportWithAccessPaths)
+
+    // Specific CSP+Service Report with Access Paths included
+    let reportName = 'terminated_aws_lambda_admins.csv'
+    let filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive'`
+    let includeAccessPaths = true
+    let csp = 'aws'
+    let service = 'lambda'
+    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
+
+    // Specific CSP+Service Report without Access Paths
+    reportName = 'terminated_csp_admins.csv'
+    filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive'`
+    includeAccessPaths = false
+    csp = ''
+    service = ''
+    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
+
+    // Example filter with no results 
+    reportName = 'no_results.csv'
+    filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive' && record.IdentityDepartment !== 'Engineering'`
+    includeAccessPaths = false
+    csp = 'azure'
+    service = 'compute'
+    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
 
     logger.info('##### End Processing #####')
 }

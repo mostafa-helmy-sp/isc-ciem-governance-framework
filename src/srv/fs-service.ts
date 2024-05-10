@@ -99,6 +99,14 @@ export class FsService {
         return this.listFilesByExtenstionInDirectory(directoryName, FileExtenstion.CSV)
     }
 
+    // Returns a list of CSV files matching a specific RegEx in a directory
+    filterCsvFilesByRegExInDirectory(directoryName: string, regex: string): string[] | undefined {
+        const files = this.listCsvFilesInDirectory(directoryName)
+        if (!files || files.length == 0) return
+        // Filter results by extension
+        else return files.filter(file => file.toLowerCase().match(regex))
+    }
+
     // Read CSV file to String
     readCsvFileToString(directoryName: string, fileName: string): string | undefined {
         try {
