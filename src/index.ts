@@ -37,6 +37,14 @@ async function process() {
     await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
 
     // Specific CSP+Service Report without Access Paths
+    reportName = 'all_access_JuanHamilton.csv'
+    filter = `record.IdentityUsername === 'Juan.Hamilton'`
+    includeAccessPaths = true
+    csp = ''
+    service = ''
+    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
+
+    // Specific CSP+Service Report without Access Paths
     reportName = 'terminated_csp_admins.csv'
     filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive'`
     includeAccessPaths = false
