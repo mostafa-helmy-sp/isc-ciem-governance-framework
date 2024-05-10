@@ -44,6 +44,14 @@ async function process() {
     service = ''
     await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
 
+    // Example with invalid CSP / Service 
+    reportName = 'invalid_csp.csv'
+    filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive' && record.IdentityDepartment !== 'Engineering'`
+    includeAccessPaths = false
+    csp = 'oci'
+    service = 'compute'
+    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
+
     // Example filter with no results 
     reportName = 'no_results.csv'
     filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive' && record.IdentityDepartment !== 'Engineering'`

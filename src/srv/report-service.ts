@@ -280,7 +280,7 @@ export class ReportService {
         // Build file regex filter using input csp / service
         const regex = this.getFileMatchRegEx(csp, service)
         const files = this.fsSrv.filterCsvFilesByRegExInDirectory(this.getOutputResourceAccessReportDir(), regex)
-        if (!files) {
+        if (!files || files.length == 0) {
             const errorMessage = `File Name RegEx: [${regex}] derived from CSP: [${csp}] and Service: [${service}] matched no output resource access reports`
             this.logger.error(errorMessage)
             return this.getEmptyResult(errorMessage)
