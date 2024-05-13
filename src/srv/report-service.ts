@@ -7,7 +7,7 @@ import * as logSrv from './log-service'
 import * as arrayFunc from '../func/array-func'
 import { AccountType } from '../enum/acc-type'
 import { CorrelatedIdentity } from '../model/correlated-identity'
-import { Account, IdentityDocument, EntitlementDto } from 'sailpoint-api-client'
+import { Account, IdentityDocument } from 'sailpoint-api-client'
 import { CiemService } from './ciem-service'
 import { AccessPath } from '../model/access-paths'
 
@@ -21,7 +21,7 @@ export class ReportService {
     private iscSrv: IscService
     private fsSrv: FsService
     private identitiesMap: Map<string, CorrelatedIdentity>
-    private directEntitlementsMap: Map<string, EntitlementDto | undefined>
+    private cloudEnabledEntitlementsMap: Map<string, any | undefined>
 
     constructor(logLevel?: string) {
         this.logger = logSrv.getLogger(logLevel)
@@ -30,7 +30,7 @@ export class ReportService {
         this.iscSrv = new IscService(config.logLevel)
         this.fsSrv = new FsService(config.logLevel)
         this.identitiesMap = new Map<string, CorrelatedIdentity>()
-        this.directEntitlementsMap = new Map<string, EntitlementDto | undefined>()
+        this.cloudEnabledEntitlementsMap = new Map<string, any | undefined>()
     }
 
     getWorkingDirectory(): string {
@@ -69,10 +69,6 @@ export class ReportService {
         return path.join(this.getOutputReportsDir(), ciemConfig.CustomOutputReportsDir)
     }
 
-    getDirectEntitlementMapKey(sourceId: string, entitlementValue: string) {
-        return `#${sourceId}#${entitlementValue}#`
-    }
-
     // Update Account NativeIdentity to CorrelatedIdentity map for Bulk Processing
     updateIdentitiesMap(accountNativeIds: string[], accounts: Account[] | undefined, identities: IdentityDocument[] | undefined) {
         for (const accountNativeId of accountNativeIds) {
@@ -82,11 +78,11 @@ export class ReportService {
             }
             let correlatedIdentity = new CorrelatedIdentity(AccountType.UNKNOWN)
             if (accounts) {
-                const account = arrayFunc.findObjectAttribute(accounts, "nativeIdentity", accountNativeId)
+                const account = arrayFunc.findObjectByAttribute(accounts, 'nativeIdentity', accountNativeId)
                 if (account) {
                     correlatedIdentity = new CorrelatedIdentity(AccountType.UNCORRELATED, account)
                     if (identities && !account.uncorrelated && account.identityId) {
-                        const identity = arrayFunc.findObjectAttribute(identities, "id", account.identityId)
+                        const identity = arrayFunc.findObjectByAttribute(identities, 'id', account.identityId)
                         if (identity) {
                             correlatedIdentity = new CorrelatedIdentity(AccountType.CORRELATED, account, identity)
                         } else {
@@ -114,14 +110,50 @@ export class ReportService {
         return resourceAccessReportRecords
     }
 
+    // Build the key to used for finding/storing direct entitlements in the map
+    getDirectEntitlementMapKey(sourceId: string, entitlementId: string) {
+        return `#${sourceId}#${entitlementId}#`.toLowerCase()
+    }
+
+    // Custom logic to match the entitlement details using the access path step details
+    matchDirectEntitlement(cloudEnabledEntitlements: any[], accessPath: AccessPath): any | undefined {
+        let entitlementStep = accessPath.getEntitlementStep()
+        let entitlementScope = accessPath.getEntitlementScopeStep()
+        if (!entitlementStep) return
+        // Special handling for AWS Inline Policies
+        if (entitlementStep.csp === 'AWS' && entitlementStep.type === 'iam/UserInlinePolicy') {
+            // From 'user-arn@policy-name' to  'user-arn:InlinePolicy:policy-name'
+            return arrayFunc.findObjectByAttribute(cloudEnabledEntitlements, 'resource_id', entitlementStep.id.replace('@', ':InlinePolicy:'))
+        }
+        // Special handling for GCP Role Bindings
+        if (entitlementStep.csp === 'GCP' && entitlementStep.type === 'PolicyBinding' && entitlementStep.name.indexOf(":") > 0 && entitlementScope) {
+            // GCP Naming Convention: 'Role (on) Scope [scope type]'
+            let entitlementName = `${entitlementStep.name.split(":")[1]} (on) ${entitlementScope.name} [${entitlementScope.type}]`
+            return arrayFunc.findObjectByAttribute(cloudEnabledEntitlements, 'name', entitlementName)
+        }
+        // Special handling for Azure Role Assignments
+        if (entitlementStep.csp === 'Azure' && entitlementStep.type === 'Microsoft.Authorization/roleAssignments' && entitlementScope) {
+            // Azure Naming Convention: 'Role [on] Scope' 
+            let entitlementName = `${entitlementStep.name} [on] ${entitlementScope.name}`
+            return arrayFunc.findObjectByAttribute(cloudEnabledEntitlements, 'name', entitlementName)
+        }
+        return arrayFunc.findObjectByAttribute(cloudEnabledEntitlements, 'resource_id', entitlementStep.id)
+    }
+
     // Fetch Direct Entitlement from Map or via API
-    async findDirectEntitlement(accountId: string, sourceId: string, entitlementValue: string): Promise<EntitlementDto | undefined> {
-        const mapKey = this.getDirectEntitlementMapKey(sourceId, entitlementValue)
+    async findDirectEntitlement(accountId: string, sourceId: string, accessPath: AccessPath): Promise<any | undefined> {
+        let entitlementStep = accessPath.getEntitlementStep()
+        if (!entitlementStep) return
+        let mapKey = this.getDirectEntitlementMapKey(sourceId, entitlementStep.id)
         // Return from map if already found
-        if (this.directEntitlementsMap.has(mapKey)) return this.directEntitlementsMap.get(mapKey)
-        // Fetch via API is not found already
-        const directEntitlement = await this.iscSrv.listCloudEntitlementForAccount(accountId, entitlementValue)
-        this.directEntitlementsMap.set(mapKey, directEntitlement)
+        if (this.cloudEnabledEntitlementsMap.has(mapKey)) {
+            return this.cloudEnabledEntitlementsMap.get(mapKey)
+        }
+        // Fetch via CIEM APIs is not found already
+        let cloudEnabledEntitlements = await this.ciemSrv.getCloudEnabledEntitlementsForAccount(accountId)
+        if (!cloudEnabledEntitlements) return
+        let directEntitlement = this.matchDirectEntitlement(cloudEnabledEntitlements, accessPath)
+        this.cloudEnabledEntitlementsMap.set(mapKey, directEntitlement)
         return directEntitlement
     }
 
@@ -131,18 +163,17 @@ export class ReportService {
         let accessPaths = [new AccessPath()]
         // Only attempt to calculate the access path for known accounts
         if (reportRecord.AccountInternalID && reportRecord.AccountInternalID != AccountType.UNKNOWN) {
-            let fetchedAccessPaths = await this.ciemSrv.getResourceAccessPathsForAccount(reportRecord.AccountId, "User", reportRecord.AccountSourceType, reportRecord.Service, reportRecord.ResourceType, reportRecord.ResourceId)
+            let fetchedAccessPaths = await this.ciemSrv.getResourceAccessPathsForAccount(reportRecord.AccountId, 'User', reportRecord.AccountSourceType, reportRecord.Service, reportRecord.ResourceType, reportRecord.ResourceId)
             // Use fetched Access Path if found
             if (fetchedAccessPaths) accessPaths = fetchedAccessPaths
         }
         for (const accessPath of accessPaths) {
-            const directEntitlementValue = accessPath.getAccessPathEntitlementValue()
-            // Fetch Direct Entitlement Details if known
-            if (reportRecord.AccountInternalID && reportRecord.AccountInternalID != AccountType.UNKNOWN && directEntitlementValue) {
-                const directEntitlement = await this.findDirectEntitlement(reportRecord.AccountInternalID, reportRecord.AccountSourceInternalID, directEntitlementValue)
+            // Fetch Direct Entitlement Details if Account is known
+            if (reportRecord.AccountInternalID && reportRecord.AccountInternalID != AccountType.UNKNOWN) {
+                const directEntitlement = await this.findDirectEntitlement(reportRecord.AccountInternalID, reportRecord.AccountSourceInternalID, accessPath)
                 if (directEntitlement) accessPath.setDirectEntitlement(directEntitlement)
             }
-            reportRecordWithAccessPaths.push({ ...reportRecord, ...accessPath.getDirectEntitlementAttributes(), AccessPath: accessPath.toString() })
+            reportRecordWithAccessPaths.push({ ...reportRecord, ...accessPath.directEntitlementAttributes, AccessPath: accessPath.toString() })
         }
         return reportRecordWithAccessPaths
     }
@@ -169,7 +200,7 @@ export class ReportService {
         const resourceAccessReportRecords = this.readReport(directory, report)
         if (!resourceAccessReportRecords) return
         // Find unique list of AccountIDs in report
-        const accountNativeIds = arrayFunc.buildAttributeArray(resourceAccessReportRecords, "AccountId", true)
+        const accountNativeIds = arrayFunc.buildAttributeArray(resourceAccessReportRecords, 'AccountId', true)
         this.logger.debug(`Found [${accountNativeIds.length}] Unique CSP AccountIDs from Report [${report}]`)
         // Filter to only accounts not in the map
         const newAccountNativeIds = arrayFunc.findArrayMapDifference(accountNativeIds, this.identitiesMap)
@@ -180,9 +211,9 @@ export class ReportService {
             if (accounts) {
                 this.logger.debug(`Found [${accounts.length}] New ISC Accounts for Report [${report}]`)
                 // Exclude uncorrelated Accounts from Identity Search
-                const correlatedAccounts = arrayFunc.filterArrayByObjectBooleanAttribute(accounts, "uncorrelated", false)
+                const correlatedAccounts = arrayFunc.filterArrayByObjectBooleanAttribute(accounts, 'uncorrelated', false)
                 this.logger.debug(`Only [${correlatedAccounts.length}] New ISC Accounts are correlated for Report [${report}]`)
-                const identityIds = arrayFunc.buildAttributeArray(correlatedAccounts, "identityId", true)
+                const identityIds = arrayFunc.buildAttributeArray(correlatedAccounts, 'identityId', true)
                 const includedIdentityAttributes = Object.keys(ciemConfig.IncludedIdentityAttributes)
                 identities = await this.iscSrv.searchIdentitiesByIds(identityIds, includedIdentityAttributes)
                 if (!identities) {
@@ -198,7 +229,6 @@ export class ReportService {
             this.updateIdentitiesMap(newAccountNativeIds, accounts, identities)
         }
         this.logger.debug(`Identities Map size: [${this.identitiesMap.size}] following Report [${report}]`)
-        this.logger.info(`Creating identified report ${includeAccessPaths ? `including Access Paths ` : ``}for Report [${report}]`)
         const identifiedResourceAccessReportRecords = await this.addIdentityContext(resourceAccessReportRecords, includeAccessPaths)
         return identifiedResourceAccessReportRecords
     }
@@ -232,6 +262,7 @@ export class ReportService {
     // Add Identity Details and optionally Access Paths to a single Resource Access Report
     async createIdentifiedResourceAccessReport(inResourceAccessReportsDir: string, resourceAccessReportFile: string, outResourceAccessReportsDir: string, includeAccessPaths?: boolean) {
         // Process report and add included identity attributes
+        this.logger.info(`Creating identified report ${includeAccessPaths ? `including Access Paths ` : ``}for Report [${resourceAccessReportFile}]`)
         const identifiedResourceAccessReportRecords = await this.identifyReport(inResourceAccessReportsDir, resourceAccessReportFile, includeAccessPaths)
         if (!identifiedResourceAccessReportRecords) {
             this.logger.error(`Error creating Identified Report for [${resourceAccessReportFile}]`)
@@ -243,7 +274,7 @@ export class ReportService {
 
     // Add Identity Details and optionally Access Paths to all Resource Access Reports
     async createIdentifiedResourceAccessReports(includeAccessPaths?: boolean) {
-        this.logger.info(this.fsSrv.listFilesInDirectory(this.getInputReportsDir()), `Input Reports Dir Contents`)
+        this.logger.debug(this.fsSrv.listFilesInDirectory(this.getInputReportsDir()), `Input Reports Dir Contents`)
         const inResourceAccessReportsDir = this.getInputResourceAccessReportDir()
         const inUnusedAccessReportsDir = this.getInputUnusedAccessReportDir()
         const outResourceAccessReportsDir = this.getOutputResourceAccessReportDir()
@@ -310,6 +341,7 @@ export class ReportService {
 
     // Create and Write a Custom Report
     async createCustomReport(reportName: string, filter: string, includeAccessPaths: boolean, csp?: string, service?: string) {
+        this.logger.info(`Creating custom report ${includeAccessPaths ? `including Access Paths ` : ``}for Report [${reportName}]`)
         let filteredReport = await this.searchOutputResourceAccessReports(filter, includeAccessPaths, csp, service)
         this.writeCustomReport(reportName, filteredReport)
     }

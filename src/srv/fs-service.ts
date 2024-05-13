@@ -117,16 +117,19 @@ export class FsService {
         }
     }
 
+    readAsString(value: string, quoted: boolean): string {
+        return value
+    }
+
     // Read CSV file into Object
     readCsvFileToObject(directoryName: string, fileName: string): any[] | undefined {
         const csv = this.readCsvFileToString(directoryName, fileName)
         if (!csv) return
-        return csv2json(csv, { delimiter: ",", header: true })
+        return csv2json(csv, { delimiter: ",", header: true, parseValue: this.readAsString })
     }
 
     // Specific Write function to CSV file
     writeObjectToCsvFile(directoryName: string, fileName: string, objectJson: any): boolean {
-        // json2csvOptions.keys = ["id", "name", "descrpition", "sourceSchemaObjectType", "attribute", "value", "source.id", "source.name", "owner.id", "owner.type", "owner.name", "cloudGoverned", "privileged"]
         const csv = json2csv(objectJson, { delimiter: ",", header: true })
         // Write CSV to File
         const writeFileOptions: fs.WriteFileOptions = {
@@ -148,3 +151,4 @@ export class FsService {
         return false
     }
 }
+

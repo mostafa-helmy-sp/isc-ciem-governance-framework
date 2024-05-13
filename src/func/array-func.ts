@@ -36,14 +36,56 @@ export function mergeArraysDeduplicateById<Type>(items1: Type[], items2: Type[])
     return mergeArraysDeduplicateByAttribute(items1, items1, "id")
 }
 
+// Search array by case-sensitive match object attribute value
+export function filterArrayByObjectStringAttributeCS<Type>(items: Type[], attributeName: string, attributeValue: string): Type[] {
+    return items.filter(item => item[attributeName as keyof Type] === attributeValue)
+}
+
+// Search array by case-insensitive match object attribute value
+export function filterArrayByObjectStringAttributeCI<Type>(items: Type[], attributeName: string, attributeValue: string): Type[] {
+    return items.filter(item => (item[attributeName as keyof Type] as string).toLowerCase() === attributeValue.toLowerCase())
+}
+
+// Search array by partial case-sensitive match object attribute value
+export function filterArrayByMatchObjectStringAttributeCS<Type>(items: Type[], attributeName: string, attributeValue: string): Type[] {
+    return items.filter(item => (item[attributeName as keyof Type] as string).match(attributeValue) || (attributeValue).match(item[attributeName as keyof Type] as string))
+}
+
+// Search array by partial case-insensitive match object attribute value
+export function filterArrayByMatchObjectStringAttributeCI<Type>(items: Type[], attributeName: string, attributeValue: string): Type[] {
+    return items.filter(item => (item[attributeName as keyof Type] as string).toLowerCase().match(attributeValue.toLowerCase()) || (attributeValue.toLowerCase()).match((item[attributeName as keyof Type] as string).toLowerCase()))
+}
+
 // Search array by object attribute value
-export function filterArrayByObjectStringAttribute<Type>(items: Type[], attributeName: string, attributeValue: string): Type[] {
-    return items.filter(item => item[attributeName as keyof Type] == attributeValue)
+export function filterArrayByObjectStringAttribute<Type>(items: Type[], attributeName: string, attributeValue: string, partialMatch?: boolean, caseSensitive?: boolean): Type[] {
+    if (partialMatch && caseSensitive) return filterArrayByMatchObjectStringAttributeCS(items, attributeName, attributeValue)
+    if (partialMatch && !caseSensitive) return filterArrayByMatchObjectStringAttributeCI(items, attributeName, attributeValue)
+    if (!partialMatch && caseSensitive) return filterArrayByObjectStringAttributeCS(items, attributeName, attributeValue)
+    return filterArrayByObjectStringAttributeCI(items, attributeName, attributeValue)
+}
+
+// Find first object by attribute value
+export function findObjectByAttribute<Type>(items: Type[], attributeName: string, attributeValues: string, partialMatch?: boolean, caseSensitive?: boolean): Type | undefined {
+    const results = filterArrayByObjectStringAttribute(items, attributeName, attributeValues, partialMatch, caseSensitive)
+    if (results.length > 0) return results[0]
+    return
 }
 
 // Search array by object attribute value
 export function filterArrayByObjectBooleanAttribute<Type>(items: Type[], attributeName: string, attributeValue: boolean): Type[] {
-    return items.filter(item => item[attributeName as keyof Type] == attributeValue)
+    return items.filter(item => item[attributeName as keyof Type] === attributeValue)
+}
+
+// Search array by given filter string
+export function filterArrayByFilterString<Type>(items: Type[], filter: string): Type[] {
+    return items.filter(record => eval(filter))
+}
+
+// Find first object by given filter string
+export function findObjectByFilterString<Type>(items: Type[], filter: string): Type | undefined {
+    const results = filterArrayByFilterString(items, filter)
+    if (results.length > 0) return results[0]
+    return
 }
 
 // Search array by object attribute value
@@ -54,21 +96,6 @@ export function findArrayDifference(items1: string[], items2: string[]): string[
 // Search array by object attribute value
 export function findArrayMapDifference(items: string[], map: Map<string, any>): string[] {
     return items.filter(item => !map.has(item))
-}
-
-// Search array by object attribute value
-export function findObjectAttribute<Type>(items: Type[], attributeName: string, attributeValues: string): Type | undefined {
-    const results = filterArrayByObjectStringAttribute(items, attributeName, attributeValues)
-    if (results.length > 0) {
-        return results[0]
-    } else {
-        return
-    }
-}
-
-// Search array by given filter string
-export function filterArrayByFilterString<Type>(items: Type[], filter: string): Type[] {
-    return items.filter(record => eval(filter))
 }
 
 // Helper method to build a query or filter from an array of values

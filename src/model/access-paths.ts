@@ -1,4 +1,3 @@
-import { EntitlementDto } from 'sailpoint-api-client'
 import config from '../../config.json'
 
 var ciemConfig = config.CiemConfig
@@ -47,7 +46,7 @@ export class AccessPathStep {
 
 export class AccessPath {
     accessPathSteps: AccessPathStep[]
-    directEntitlement?: EntitlementDto
+    directEntitlementAttributes: Record<string, string>
 
     constructor(accessPath?: string) {
         this.accessPathSteps = []
@@ -62,34 +61,28 @@ export class AccessPath {
         } else {
             this.accessPathSteps.push(new AccessPathStep())
         }
+        this.directEntitlementAttributes = {}
+        this.directEntitlementAttributes.DirectEntitlementID = defaultUnknownString
+        this.directEntitlementAttributes.DirectEntitlementName = defaultUnknownString
+        this.directEntitlementAttributes.DirectEntitlementType = defaultUnknownString
     }
 
-    getAccessPathEntitlementValue(): string | undefined {
-        if (this.accessPathSteps.length > 1) return this.accessPathSteps[1].id
+    getEntitlementStep(): AccessPathStep | undefined {
+        if (this.accessPathSteps.length > 1) return this.accessPathSteps[1]
     }
 
-    setDirectEntitlement(directEntitlement: EntitlementDto) {
-        this.directEntitlement = directEntitlement
+    getEntitlementScopeStep(): AccessPathStep | undefined {
+        if (this.accessPathSteps.length > 2) return this.accessPathSteps[2]
     }
 
-    getDirectEntitlementAttributes(): Record<string, string> {
-        let directEntitlementAttributes: Record<string, string> = {}
-        if (this.directEntitlement) {
-            directEntitlementAttributes.DirectEntitlementID = this.directEntitlement.id || defaultUnknownString
-            directEntitlementAttributes.DirectEntitlementName = this.directEntitlement.name
-            directEntitlementAttributes.DirectEntitlementAttribute = this.directEntitlement.attribute || defaultUnknownString
-            directEntitlementAttributes.DirectEntitlementValue = this.directEntitlement.value || defaultUnknownString
-        } else {
-            directEntitlementAttributes.DirectEntitlementID = defaultUnknownString
-            directEntitlementAttributes.DirectEntitlementName = defaultUnknownString
-            directEntitlementAttributes.DirectEntitlementAttribute = defaultUnknownString
-            directEntitlementAttributes.DirectEntitlementValue = defaultUnknownString
-        }
-        return directEntitlementAttributes
+    setDirectEntitlement(directEntitlement: any) {
+        this.directEntitlementAttributes.DirectEntitlementID = directEntitlement.id || defaultUnknownString
+        this.directEntitlementAttributes.DirectEntitlementName = directEntitlement.name || defaultUnknownString
+        this.directEntitlementAttributes.DirectEntitlementType = directEntitlement.entitlement_type || defaultUnknownString
     }
 
     toString(includeIds?: boolean): string {
-        let string = ""
+        let string = ''
         this.accessPathSteps.forEach(accessPathStep => {
             string += `>> ${accessPathStep.toString(includeIds)} `
         });
