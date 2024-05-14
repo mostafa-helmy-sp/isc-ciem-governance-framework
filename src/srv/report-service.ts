@@ -306,7 +306,7 @@ export class ReportService {
     }
 
     // Create a custom report by filtering different Resource Access Reports 
-    async searchOutputResourceAccessReports(filter: string, includeAccessPaths: boolean, csp?: string, service?: string): Promise<any[]> {
+    async searchOutputResourceAccessReports(filter: string, includeAccessPaths?: boolean, csp?: string, service?: string): Promise<any[]> {
         if (!filter) return this.getEmptyResult(`Invalid or Empty inputs. CSP: [${csp}], Service: [${service}], Filter: [${filter}]`)
         // Build file regex filter using input csp / service
         const regex = this.getFileMatchRegEx(csp, service)
@@ -340,7 +340,7 @@ export class ReportService {
     }
 
     // Create and Write a Custom Report
-    async createCustomReport(reportName: string, filter: string, includeAccessPaths: boolean, csp?: string, service?: string) {
+    async createCustomReport(reportName: string, filter: string, includeAccessPaths?: boolean, csp?: string, service?: string) {
         this.logger.info(`Creating custom report ${includeAccessPaths ? `including Access Paths ` : ``}for Report [${reportName}]`)
         let filteredReport = await this.searchOutputResourceAccessReports(filter, includeAccessPaths, csp, service)
         this.writeCustomReport(reportName, filteredReport)

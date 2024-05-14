@@ -28,7 +28,7 @@ async function process() {
 
     fsSrv.cleanupDirectory(reportSrv.getCustomOutputReportsDir())
 
-    // Specific CSP+Service Report with Access Paths included
+    // Filter applied to a specific CSP + Service Report with Access Paths included
     let reportName = 'terminated_aws_lambda_admins.csv'
     let filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive'`
     let includeAccessPaths = true
@@ -36,37 +36,16 @@ async function process() {
     let service = 'lambda'
     await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
 
-    // Specific CSP+Service Report without Access Paths
-    reportName = 'all_access_JuanHamilton.csv'
+    // Filter for a specific Identity across all CSP/Service Reports without Access Paths
+    reportName = 'all_access_Juan.Hamilton.csv'
     filter = `record.IdentityUsername === 'Juan.Hamilton'`
     includeAccessPaths = true
-    csp = ''
-    service = ''
-    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
+    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths)
 
-    // Specific CSP+Service Report without Access Paths
+    // Filter across all CSP/Service Reports without Access Paths
     reportName = 'terminated_csp_admins.csv'
     filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive'`
-    includeAccessPaths = false
-    csp = ''
-    service = ''
-    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
-
-    // Example with invalid CSP / Service 
-    reportName = 'invalid_csp.csv'
-    filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive' && record.IdentityDepartment !== 'Engineering'`
-    includeAccessPaths = false
-    csp = 'oci'
-    service = 'compute'
-    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
-
-    // Example filter with no results 
-    reportName = 'no_results.csv'
-    filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive' && record.IdentityDepartment !== 'Engineering'`
-    includeAccessPaths = false
-    csp = 'azure'
-    service = 'compute'
-    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
+    await reportSrv.createCustomReport(reportName, filter)
 
     logger.info('##### End Processing #####')
 }

@@ -19,7 +19,7 @@ Here are some examples from the index.ts.
     // Cleanup an existing Custom Reports
     fsSrv.cleanupDirectory(reportSrv.getCustomOutputReportsDir())
 
-    // Filter on a specific CSP + Service Report with Access Paths included
+    // Filter applied to a specific CSP + Service Report with Access Paths included
     let reportName = 'terminated_aws_lambda_admins.csv'
     let filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive'`
     let includeAccessPaths = true
@@ -27,19 +27,14 @@ Here are some examples from the index.ts.
     let service = 'lambda'
     await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
 
-    // Specific Identity across all CSPs + Services with Access Paths included
-    reportName = 'all_access_JuanHamilton.csv'
+    // Filter for a specific Identity across all CSP/Service Reports without Access Paths
+    reportName = 'all_access_Juan.Hamilton.csv'
     filter = `record.IdentityUsername === 'Juan.Hamilton'`
     includeAccessPaths = true
-    csp = ''
-    service = ''
-    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
+    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths)
 
-    // Specific Filter across all CSPs + Services without Access Paths
+    // Filter across all CSP/Service Reports without Access Paths
     reportName = 'terminated_csp_admins.csv'
     filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive'`
-    includeAccessPaths = false
-    csp = ''
-    service = ''
-    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
+    await reportSrv.createCustomReport(reportName, filter)
 ```
