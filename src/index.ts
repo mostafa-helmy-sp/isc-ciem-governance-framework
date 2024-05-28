@@ -1,5 +1,4 @@
 import config from '../config.json'
-import * as arrayFunc from './func/array-func'
 import * as logSrv from './srv/log-service'
 import { IscService } from './srv/isc-service'
 import { FsService } from './srv/fs-service'
@@ -36,16 +35,22 @@ async function process() {
     let service = 'lambda'
     await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp, service)
 
-    // Filter for a specific Identity across all CSP/Service Reports without Access Paths
+    // Filter for a specific Identity across all CSP/Service Reports with Access Paths included
     reportName = 'all_access_Juan.Hamilton.csv'
     filter = `record.IdentityUsername === 'Juan.Hamilton'`
     includeAccessPaths = true
     await reportSrv.createCustomReport(reportName, filter, includeAccessPaths)
 
+    // Filter for a specific Resource across all CSP Identities & User Accounts with Access Paths included
+    reportName = 's3_bucket_quolux-2090_access.csv'
+    filter = `record.ResourceId === 'arn:aws:s3:::quolux-2090'`
+    includeAccessPaths = true
+    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths)
+
     // Filter across all CSP/Service Reports without Access Paths
-    reportName = 'terminated_csp_admins.csv'
-    filter = `record.AccessLevel.includes('A') && record.IdentityLifecycleState === 'inactive'`
-    await reportSrv.createCustomReport(reportName, filter)
+    reportName = 'finance_csp_admins.csv'
+    filter = `record.AccessLevel.includes('A') && record.IdentityDepartment === 'Finance'`
+    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths)
 
     logger.info('##### End Processing #####')
 }

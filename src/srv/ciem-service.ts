@@ -22,11 +22,12 @@ export class CiemService {
         })
         axiosRetry(this.httpClient, {
             retries: 10,
-            retryDelay: (retryCount, error) => axiosRetry.exponentialDelay(retryCount, error, 2000),
-            retryCondition: (error) => {
-                return error.response?.status === 429;
+            retryDelay: (retryCount, error) => axiosRetry.exponentialDelay(retryCount, error, 100),
+            retryCondition: error => {
+                return error.response?.status === 429 || axiosRetry.isNetworkError(error)
             },
-            onRetry: (retryCount, error, requestConfig) => {
+            onRetry: async (retryCount, error, requestConfig) => {
+                if (error.response?.status === 429) await this.getToken(true)
                 this.logger.debug(`Retrying API [${requestConfig.url}] due to request error: [${error}]. Try number [${retryCount}]`)
             }
         })
@@ -44,9 +45,9 @@ export class CiemService {
         }
     }
 
-    async getToken(): Promise<string | undefined> {
+    async getToken(forceLogin?: boolean): Promise<string | undefined> {
         // Return current token if exists & valid
-        if (this.accessToken && this.tokenExpiry && this.tokenExpiry > new Date()) {
+        if (this.accessToken && this.tokenExpiry && this.tokenExpiry > new Date() && !forceLogin) {
             return this.accessToken
         }
         // Authenticate and get a new token otherwise

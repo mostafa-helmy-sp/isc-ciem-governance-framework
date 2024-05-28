@@ -185,6 +185,7 @@ export class ReportService {
             // Fetch CorrelatedIdentity object from map
             const correlatedIdentity = this.identitiesMap.get(reportRecord.AccountId) || new CorrelatedIdentity(AccountType.UNKNOWN)
             const identifiedReportRecord = { ...correlatedIdentity.identityAttributes, ...reportRecord, ...correlatedIdentity.accountAttributes }
+            // This should not be used but leaving in case needed in the future. Access Paths should only be included in Custom Reports.
             if (includeAccessPaths) {
                 const reportRecordWithAccessPaths = await this.addAccessPath(identifiedReportRecord)
                 identifiedReportRecords = arrayFunc.mergeArrays(identifiedReportRecords, reportRecordWithAccessPaths)
@@ -234,7 +235,23 @@ export class ReportService {
     }
 
     // Include Access Paths to Report Records
-    async addAccessPaths(reportRecords: any[]): Promise<any[]> {
+    async addAccessPathParallel(reportRecords: any[]): Promise<any[]> {
+        let accessPathProcessingRecords: any[] = []
+        let accessPathReportRecords: any[] = []
+        // Processing records asynchronously
+        reportRecords.forEach(reportRecord => {
+            accessPathProcessingRecords.push(this.addAccessPath(reportRecord))
+        })
+        // Await and push results in return array
+        for (const accessPathProcessingRecord of accessPathProcessingRecords) {
+            accessPathReportRecords = arrayFunc.mergeArrays(accessPathReportRecords, await accessPathProcessingRecord)
+        }
+        return accessPathReportRecords
+    }
+
+    // Include Access Paths to Report Records
+    async addAccessPaths(reportRecords: any[], parallelProcessing?: boolean): Promise<any[]> {
+        if (parallelProcessing) return await this.addAccessPathParallel(reportRecords)
         let accessPathReportRecords: any[] = []
         for (const reportRecord of reportRecords) {
             const reportRecordWithAccessPaths = await this.addAccessPath(reportRecord)
@@ -329,7 +346,7 @@ export class ReportService {
                 if (filteredReport && filteredReport.length > 0) {
                     // Include access paths if required
                     if (includeAccessPaths) {
-                        filteredReport = await this.addAccessPaths(filteredReport)
+                        filteredReport = await this.addAccessPaths(filteredReport, true)
                     }
                     results = arrayFunc.mergeArrays(results, filteredReport)
                 }
