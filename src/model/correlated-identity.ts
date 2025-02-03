@@ -32,7 +32,7 @@ export class CorrelatedIdentity {
             this.accountAttributes.AccountInternalID = account.id
             this.accountAttributes.AccountDisplayName = account.name
             this.accountAttributes.AccountSourceInternalID = account.sourceId
-            this.accountAttributes.AccountSourceName = account.sourceName
+            this.accountAttributes.AccountSourceName = account.sourceName || AccountType.UNKNOWN
         } else {
             this.accountAttributes.AccountInternalID = accountType
             this.accountAttributes.AccountDisplayName = accountType

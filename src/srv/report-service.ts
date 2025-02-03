@@ -5,6 +5,7 @@ import { IscService } from './isc-service'
 import { FsService } from './fs-service'
 import * as logSrv from './log-service'
 import * as arrayFunc from '../func/array-func'
+import * as timeFunc from '../func/time-func'
 import { AccountType } from '../enum/acc-type'
 import { CorrelatedIdentity } from '../model/correlated-identity'
 import { Account, IdentityDocument } from 'sailpoint-api-client'
@@ -180,24 +181,24 @@ export class ReportService {
 
     // Include the Identity Context to Report Records
     async addIdentityContext(reportRecords: any[], includeAccessPaths?: boolean): Promise<any[]> {
-        let identifiedReportRecords: any[] = []
+        let extendedReportRecords: any[] = []
         for (const reportRecord of reportRecords) {
             // Fetch CorrelatedIdentity object from map
             const correlatedIdentity = this.identitiesMap.get(reportRecord.AccountId) || new CorrelatedIdentity(AccountType.UNKNOWN)
-            const identifiedReportRecord = { ...correlatedIdentity.identityAttributes, ...reportRecord, ...correlatedIdentity.accountAttributes }
+            const extendedReportRecord = { ...correlatedIdentity.identityAttributes, ...reportRecord, ...correlatedIdentity.accountAttributes }
             // This should not be used but leaving in case needed in the future. Access Paths should only be included in Custom Reports.
             if (includeAccessPaths) {
-                const reportRecordWithAccessPaths = await this.addAccessPath(identifiedReportRecord)
-                identifiedReportRecords = arrayFunc.mergeArrays(identifiedReportRecords, reportRecordWithAccessPaths)
+                const reportRecordWithAccessPaths = await this.addAccessPath(extendedReportRecord)
+                extendedReportRecords = arrayFunc.mergeArrays(extendedReportRecords, reportRecordWithAccessPaths)
             } else {
-                identifiedReportRecords.push(identifiedReportRecord)
+                extendedReportRecords.push(extendedReportRecord)
             }
         }
-        return identifiedReportRecords
+        return extendedReportRecords
     }
 
     // Fetch Correlated Identity details in bulk for a single report
-    async identifyReport(directory: string, report: string, includeAccessPaths?: boolean): Promise<any[] | undefined> {
+    async extendReport(directory: string, report: string, includeAccessPaths?: boolean): Promise<any[] | undefined> {
         const resourceAccessReportRecords = this.readReport(directory, report)
         if (!resourceAccessReportRecords) return
         // Find unique list of AccountIDs in report
@@ -230,8 +231,8 @@ export class ReportService {
             this.updateIdentitiesMap(newAccountNativeIds, accounts, identities)
         }
         this.logger.debug(`Identities Map size: [${this.identitiesMap.size}] following Report [${report}]`)
-        const identifiedResourceAccessReportRecords = await this.addIdentityContext(resourceAccessReportRecords, includeAccessPaths)
-        return identifiedResourceAccessReportRecords
+        const extendedResourceAccessReportRecords = await this.addIdentityContext(resourceAccessReportRecords, includeAccessPaths)
+        return extendedResourceAccessReportRecords
     }
 
     // Include Access Paths to Report Records
@@ -277,21 +278,20 @@ export class ReportService {
     }
 
     // Add Identity Details and optionally Access Paths to a single Resource Access Report
-    async createIdentifiedResourceAccessReport(inResourceAccessReportsDir: string, resourceAccessReportFile: string, outResourceAccessReportsDir: string, includeAccessPaths?: boolean) {
+    async createExtendedResourceAccessReport(inResourceAccessReportsDir: string, resourceAccessReportFile: string, outResourceAccessReportsDir: string, includeAccessPaths?: boolean) {
         // Process report and add included identity attributes
-        this.logger.info(`Creating identified report ${includeAccessPaths ? `including Access Paths ` : ``}for Report [${resourceAccessReportFile}]`)
-        const identifiedResourceAccessReportRecords = await this.identifyReport(inResourceAccessReportsDir, resourceAccessReportFile, includeAccessPaths)
-        if (!identifiedResourceAccessReportRecords) {
-            this.logger.error(`Error creating Identified Report for [${resourceAccessReportFile}]`)
+        this.logger.info(`Creating extended report ${includeAccessPaths ? `including Access Paths ` : ``}for Report [${resourceAccessReportFile}]`)
+        const extendedResourceAccessReportRecords = await this.extendReport(inResourceAccessReportsDir, resourceAccessReportFile, includeAccessPaths)
+        if (!extendedResourceAccessReportRecords) {
+            this.logger.error(`Error creating Extended Report for [${resourceAccessReportFile}]`)
             return
         }
         // Write new report to output file
-        this.writeReport(outResourceAccessReportsDir, resourceAccessReportFile, identifiedResourceAccessReportRecords)
+        this.writeReport(outResourceAccessReportsDir, resourceAccessReportFile, extendedResourceAccessReportRecords)
     }
 
     // Add Identity Details and optionally Access Paths to all Resource Access Reports
-    async createIdentifiedResourceAccessReports(includeAccessPaths?: boolean) {
-        this.logger.debug(this.fsSrv.listFilesInDirectory(this.getInputReportsDir()), `Input Reports Dir Contents`)
+    async createExtendedResourceAccessReports(includeAccessPaths?: boolean) {
         const inResourceAccessReportsDir = this.getInputResourceAccessReportDir()
         const inUnusedAccessReportsDir = this.getInputUnusedAccessReportDir()
         const outResourceAccessReportsDir = this.getOutputResourceAccessReportDir()
@@ -302,11 +302,10 @@ export class ReportService {
         this.fsSrv.cleanupDirectory(outResourceAccessReportsDir)
         this.fsSrv.cleanupDirectory(outUnusedAccessReportsDir)
         const resourceAccessReportFiles = this.fsSrv.listCsvFilesInDirectory(inResourceAccessReportsDir)
-        this.logger.info(resourceAccessReportFiles, `Resource Access Dir Contents`)
         if (resourceAccessReportFiles) {
             for (const resourceAccessReportFile of resourceAccessReportFiles) {
-                // Create each Identified Resource Access report
-                await this.createIdentifiedResourceAccessReport(inResourceAccessReportsDir, resourceAccessReportFile, outResourceAccessReportsDir, includeAccessPaths)
+                // Create each Extended Resource Access report
+                await this.createExtendedResourceAccessReport(inResourceAccessReportsDir, resourceAccessReportFile, outResourceAccessReportsDir, includeAccessPaths)
             }
         }
     }
@@ -359,7 +358,15 @@ export class ReportService {
     // Create and Write a Custom Report
     async createCustomReport(reportName: string, filter: string, includeAccessPaths?: boolean, csp?: string, service?: string) {
         this.logger.info(`Creating custom report ${includeAccessPaths ? `including Access Paths ` : ``}for Report [${reportName}]`)
+        const startTime = Date.now()
         let filteredReport = await this.searchOutputResourceAccessReports(filter, includeAccessPaths, csp, service)
+        const processEndTime = Date.now()
         this.writeCustomReport(reportName, filteredReport)
+        const writeEndTime = Date.now()
+        // Calculate metrics for logs
+        const totalTime = timeFunc.calculateTimeDifference(startTime, writeEndTime)
+        const filterTime = timeFunc.calculateTimeDifference(startTime, processEndTime)
+        const writeTime = timeFunc.calculateTimeDifference(processEndTime, writeEndTime)
+        this.logger.info(`Completed custom report [${reportName}] ${includeAccessPaths ? `including Access Paths` : ``} in ${totalTime} (Filtering time: ${filterTime}, Write time: ${writeTime})`)
     }
 }

@@ -17,6 +17,10 @@ export function getLogger(logLevel?: string): Logger {
 export function logStandardApiError(logger: Logger, error: unknown, actionName: string, customMessage?: string, object?: any): string {
     let debugMessage = `Failed ${actionName} API request`
     let errorMessage = (customMessage ? `Error ${customMessage} using ${actionName} API` : debugMessage) + `: [${error instanceof Error ? error.message : error}]`
+    // Strip the authorization header from the logs
+    if (object.headers?.Authorization) {
+        object.headers.Authorization = "xxx"
+    }
     return logStandardError(logger, error, errorMessage, debugMessage, object)
 }
 

@@ -1,5 +1,6 @@
 import config from '../config.json'
 import * as logSrv from './srv/log-service'
+import * as timeFunc from './func/time-func'
 import { IscService } from './srv/isc-service'
 import { FsService } from './srv/fs-service'
 import { ReportService } from './srv/report-service'
@@ -21,9 +22,11 @@ var reportSrv = new ReportService(config.logLevel)
 var ciemSrv = new CiemService(config.logLevel)
 
 async function process() {
+    const startTime = Date.now()
     logger.info('##### Start Processing #####')
 
-    await reportSrv.createIdentifiedResourceAccessReports()
+    await reportSrv.createExtendedResourceAccessReports()
+    const extendEndTime = Date.now()
 
     fsSrv.cleanupDirectory(reportSrv.getCustomOutputReportsDir())
 
@@ -47,12 +50,27 @@ async function process() {
     includeAccessPaths = true
     await reportSrv.createCustomReport(reportName, filter, includeAccessPaths)
 
-    // Filter across all CSP/Service Reports without Access Paths
+    // Filter across all CSP/Service Reports with Access Paths
     reportName = 'finance_csp_admins.csv'
     filter = `record.AccessLevel.includes('A') && record.IdentityDepartment === 'Finance'`
+    includeAccessPaths = true
     await reportSrv.createCustomReport(reportName, filter, includeAccessPaths)
 
+    // Filter for federated access into AWS with Access Paths
+    reportName = 'all_aws_federated_access.csv'
+    filter = `record.AccountSourceName === 'CIEM AWS - CAM SE' || record.AccountSourceType === 'Azure'`
+    includeAccessPaths = true
+    csp = 'aws'
+    await reportSrv.createCustomReport(reportName, filter, includeAccessPaths, csp)
+
     logger.info('##### End Processing #####')
+    const endTime = Date.now()
+
+    // Calculate runtime stats
+    const totalTime = timeFunc.calculateTimeDifference(startTime, endTime)
+    const extendedReportsTime = timeFunc.calculateTimeDifference(startTime, extendEndTime)
+    const customReportsTime = timeFunc.calculateTimeDifference(extendEndTime, endTime)
+    logger.info(`##### Elapsed Time: ${totalTime} (Extending Reports: ${extendedReportsTime}, Custom Reports: ${customReportsTime}) #####`)
 }
 
 process()
